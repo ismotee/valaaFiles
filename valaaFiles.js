@@ -12,15 +12,51 @@ var fs = require('fs');
 
 //TODO: settings file with good ways to setup src file and dst folder. Maybe JSON
 
-// json conversion
-var data = fs.readFileSync('./src/rimpsu.json');
-var dataJSON = JSON.parse(data);
+
+
+
+// json conversion and file check
+
+var args = process.argv.slice(2,process.argv.length);
+var data;
+var dataJSON;
+if(args) {
+    if(fs.existsSync(args[0]) && fs.lstatSync(args[0]).isFile()) {
+        data = fs.readFileSync(args[0]);
+        if(IsJsonString(data)) {
+            dataJSON = JSON.parse(data);
+        } else {
+            console.log(args[0] + " cannot be parsed with JSON.");
+            process.exit();
+        }
+    } else {
+        console.log(args[0] +" is not a file or doesn't exist."); 
+        process.exit();
+    }
+
+} else {
+    console.log("no input file!");
+    process.exit();
+}
+
 
 // checker for data that everything is included
 var addedElements = 0;
 
 
 //helper functions 
+function IsJsonString(str) {
+    var json;
+    try {
+        json = JSON.parse(str);
+    } catch (e) {
+        return false;
+    }
+    if(json) return true;
+    return false;
+}
+
+
 var getElementByName = (arr, name) => {
     return arr.find((obj)=> {
         var id = obj.id ? obj.id : obj.name;
@@ -40,10 +76,17 @@ var createFolder = (path, obj) => {
     return folder +"/";
 };
 
-var createProperties = (path,obj) => {
-    for(var property in obj) {
+var createProperties = (path,obj, ignore) => {
+    // need a copy to have evething in the original
+    var objCopy = Object.assign({},obj);
+    // removing keys from copy
+    ignore.forEach((i)=>{
+        if(objCopy[i]) delete objCopy[i];
+    });
+
+    for(var property in objCopy) {
         if(property !== 'owner') {
-            fs.writeFileSync(path + property,obj[property]);
+            fs.writeFileSync(path + property,objCopy[property]);
         }
     }
 }
@@ -101,14 +144,16 @@ while(addedElements < dataJSON.structure.length) {
 
 
 
+
+var parentFolder = "dst/";
+
+
     currentObjects.forEach(element => {
 
         console.log(element);
 
         // find a proper folder for data
-        var parentFolder;
         if(depthOfTree === 0) {
-            parentFolder = "dst/";
         } else {
             var owner = getElementByName(rootElements,element.owner);
             parentFolder = owner.folder;
@@ -123,7 +168,7 @@ while(addedElements < dataJSON.structure.length) {
 
         if(element.type === 'Entity') {
             var folder = createFolder(parentFolder,element);
-            createProperties(folder,element);
+            createProperties(folder,element,["owner"]);
             element.folder = folder;
             nextRootElements.push(element);
         } 
@@ -151,7 +196,11 @@ while(addedElements < dataJSON.structure.length) {
         
         } 
         else if(element.type === 'Relation') {
-            console.log("Warning! Relation will be ignored!");
+            var folder = createFolder(parentFolder,element);
+            createProperties(folder,element,["owner"]);
+
+            element.folder = folder;
+            nextRootElements.push(element);            
         } 
         else if(element.type === 'Media'){
             fs.writeFileSync(parentFolder+element.name, medias[element.name]);
