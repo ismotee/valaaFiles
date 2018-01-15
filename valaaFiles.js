@@ -125,17 +125,6 @@ var depthOfTree = 0
 // loop until every element is stored
 while(addedElements < dataJSON.structure.length) {
 
-
-//    console.log("Layer " + depthOfTree + ":");
-//    console.log(addedElements + "/" + dataJSON.structure.length);
-//    console.log(currentObjects);
-
-//    console.log("rootElements: ")
-//    console.log(rootElements);
-
-
-
-
 var parentFolder = "dst/";
 
 
