@@ -8,11 +8,10 @@
 */
 
 //dependencies
-var fs = require('fs');
+var fs = require('fs-extra');
 
-//TODO: settings file with good ways to setup src file and dst folder. Maybe JSON
-
-
+// make sure there's dst folder
+if(!fs.existsSync("dst/")) fs.mkdirSync("dst");
 
 
 // json conversion and file check
@@ -64,17 +63,27 @@ var getElementByName = (arr, name) => {
     });
 }
 
-var createFolder = (path, obj) => {
-    var id = obj.hasOwnProperty('id') ? obj.id.replace("/","@") : obj.name;
-    var folder = path+id;
-    if(!fs.existsSync(folder)) {
-        fs.mkdirSync(folder);
-    } else {
-        if(fs.existsSync(folder+"/"+"properties")) fs.unlinkSync(folder+"/"+"properties","");
-        if(fs.existsSync(folder+"/"+"instances")) fs.unlinkSync(folder+"/"+"instances","");
+var getTypeInitial = (element) => {
+    if(element.type === "Entity") return "E";
+    if(element.type === "Media") return "M";
+    if(element.type === "Property") return "P";
+    if(element.type === "Relation") return "R";
+    return undefined;
+}
+
+var getBaseName = (element) => {
+    return "[" + getTypeInitial(element) + "]" + element.name;
+}
+
+var createName = (folder,element) => {
+    var id = 0;
+    var result  = folder + getBaseName(element);
+    while(fs.existsSync(result)) {
+        id++;
+        result  = folder + getBaseName(element) + id;
     }
-    return folder +"/";
-};
+    return result;
+}
 
 var createProperties = (path,obj, ignore) => {
     // need a copy to have evething in the original
@@ -85,9 +94,7 @@ var createProperties = (path,obj, ignore) => {
     });
 
     for(var property in objCopy) {
-        if(property !== 'owner') {
-            fs.writeFileSync(path + property,objCopy[property]);
-        }
+            fs.writeFileSync(path + ".meta", JSON.stringify(objCopy));
     }
 }
 
@@ -99,29 +106,13 @@ for(var media in medias) {
     medias[media] = new Buffer(medias[media], 'base64').toString('utf8');
 }
 
-
-// change names that are reserved for identifiers, properties and .meta files
-var n_properties = 0;
-var n_meta = 0;
-var n_identifiers = 0;
-
-dataJSON.structure.forEach(item => {
-    if(item.name === "properties") {
-        item.name += ++n_properties;
-    } 
-    else if(item.name === "identifiers") { 
-        item.name += ++n_identifiers;
-    } 
-    else if(item.name.endsWith(".meta")) {
-        item.name += ++n_meta;
-    }
-
-
-});
-
-
 // getting first elements
 var currentObjects = dataJSON.structure.filter( item => item.type === 'Entity' && !item.owner);
+var firstElement = currentObjects.find((w)=>true); 
+// delete last version if exists
+if(fs.existsSync("dst/" + getBaseName(firstElement))) fs.removeSync("dst/" + getBaseName(firstElement));
+
+
 //var medias = dataJSON.content;
 var rootElements = [];
 var nextRootElements = []; 
@@ -161,52 +152,37 @@ var parentFolder = "dst/";
 
         
 
-        // if id then id needs to be trimmed because of "/" sign between name and raw id
-        var id = element.hasOwnProperty('id') ? element.id.replace("/","@") : element.name;
-
-        // store the data. Storing depends on the type of the data
+        var folder = createName(parentFolder,element);
 
         if(element.type === 'Entity') {
-            var folder = createFolder(parentFolder,element);
-            createProperties(folder,element,["owner"]);
+            fs.mkdirSync(folder);
+            folder += "/";
+            createProperties(folder,element,[]);
+
+            // add folder to object after createProperties to avoid mis info
             element.folder = folder;
             nextRootElements.push(element);
         } 
         else if(element.type === 'Property') {
-    
             if(element.propertyType === 'Identifier') {
-
-                if(fs.existsSync(parentFolder+"identifiers")) {
-                    fs.appendFileSync(parentFolder+"identifiers", "\n" + id + ": " + element.target);
-                } 
-                else {
-                    fs.writeFileSync(parentFolder+"identifiers", id + ": " + element.target);
-                }
+                fs.writeFileSync(folder, element.target);
             } 
             else {
-    
                 var data = typeof element.value === 'object' ? JSON.stringify(element.value) : element.value;
-    
-                if(fs.existsSync(parentFolder+"properties")) {
-                    fs.appendFileSync(parentFolder+"properties", "\n" + id + ": " + data);
-                } else {
-                    fs.writeFileSync(parentFolder+"properties", id + ": " + data);
-                }
-            }
-        
+                fs.writeFileSync(folder, data);
+            }        
         } 
         else if(element.type === 'Relation') {
-            var folder = createFolder(parentFolder,element);
-            createProperties(folder,element,["owner"]);
+            fs.mkdirSync(folder);
+            folder += "/";
+            createProperties(folder,element,[]);
 
             element.folder = folder;
             nextRootElements.push(element);            
         } 
         else if(element.type === 'Media'){
-            fs.writeFileSync(parentFolder+element.name, medias[element.name]);
-
-           // console.log(element.name + ": " + medias[element.name]);
-
+            fs.writeFileSync(folder, medias[element.name]);
+            fs.writeFileSync(folder+".meta",JSON.stringify(element));
         }
 
         addedElements++;
